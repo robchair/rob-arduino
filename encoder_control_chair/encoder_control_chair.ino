@@ -15,7 +15,7 @@ const int R_LPWM = 10;
 // HC-SR04 Ultrasonic Sensor
 // Moved off pins 2 and 3 to avoid encoder interrupt conflict
 const int TRIG_PIN = 7;
-const int ECHO_PIN = 8;
+const int ECHO_PIN = 12;
 
 // Quadrature encoders
 #define LEFT_A   2
@@ -33,12 +33,14 @@ const int R_LEN = -1;
 //tune speed here
 const int MAX_SPEED  = 60; //250
 const int FWD_SPEED  = 40;  //150;
-const int TURN_SPEED = 30;  //130;
+const int TURN_SPEED = 40;  //130;
 const int BACK_SPEED = 30;  //130;
+//PWM bias for adjusting right wheel
+const int RIGHT_PWM_BIAS = 5;
 
 // -------- RAMP SETTINGS --------
 const float ACCEL_PWM_PER_SEC = 125.0;   // reach 50 PWM in 0.4 s
-const float DECEL_PWM_PER_SEC = 180.0;   // stop from 50 PWM in 0.28 s
+const float DECEL_PWM_PER_SEC = 135.0;   // stop from 50 PWM in 0.28 s
 
 // -------- MOTOR RAMP STATE --------
 float currentLeftPWM = 0.0f;
@@ -168,6 +170,12 @@ int clampSpeed(int s) {
   return s;
 }
 
+int applyRightBias(int s) {
+  if (s > 0) return clampSpeed(s + RIGHT_PWM_BIAS);
+  if (s < 0) return clampSpeed(s - RIGHT_PWM_BIAS);
+  return 0;
+}
+
 void driveBTS7960(int rpwmPin, int lpwmPin, int speed) {
   speed = clampSpeed(speed);
 
@@ -185,9 +193,8 @@ void driveBTS7960(int rpwmPin, int lpwmPin, int speed) {
 //
 void setMotorSpeeds(int leftSpeed, int rightSpeed) {
   driveBTS7960(L_RPWM, L_LPWM, leftSpeed);
-  driveBTS7960(R_RPWM, R_LPWM, rightSpeed);
+  driveBTS7960(R_RPWM, R_LPWM, applyRightBias(rightSpeed));
 }
-
 void stopMotors() {
   applyMotorSpeedsImmediate(0, 0);   // keep as hard stop for safety
 }
@@ -201,13 +208,12 @@ void backward() {
 }
 
 void turnLeft() {
-  requestMotorSpeeds(0, -TURN_SPEED);
+  requestMotorSpeeds(-TURN_SPEED, -TURN_SPEED);
 }
 
 void turnRight() {
-  requestMotorSpeeds(TURN_SPEED, 0);
+  requestMotorSpeeds(TURN_SPEED, TURN_SPEED);
 }
-
 void quitDrive() {
   applyMotorSpeedsImmediate(0, 0);
 }
