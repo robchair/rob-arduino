@@ -33,8 +33,8 @@ const int R_LEN = -1;
 //tune speed here
 const int MAX_SPEED  = 60; //250
 const int FWD_SPEED  = 40;  //150;
-const int TURN_SPEED = 40;  //130;
-const int BACK_SPEED = 30;  //130;
+const int TURN_SPEED = 50;  //130;
+const int BACK_SPEED = 40;  //130;
 //PWM bias for adjusting right wheel
 const int RIGHT_PWM_BIAS = 5;
 
