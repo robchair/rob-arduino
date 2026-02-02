@@ -169,15 +169,30 @@ void setup() {
   Serial.println("Wheelchair controller with obstacle detection ready");
 }
 
+const unsigned long TELEMETRY_INTERVAL_MS = 100;  // publish range every 100ms
+const unsigned long CMD_WATCHDOG_MS = 250;        // if no cmd in 250ms -> stop (safety)
+
+unsigned long lastTelemetryMs = 0;
+unsigned long lastCmdMs = 0;
+
 void loop() {
-  // Process serial commands (only executes when no obstacle)
+  unsigned long now = millis();
 
-  float distance = readDistance();
+  // 1) Read and publish ultrasonic range periodically (telemetry)
+  if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
+    lastTelemetryMs = now;
+    float distance = readDistance();
+    Serial.print("RANGE_CM:");
+    Serial.println(distance, 2);   // 2 decimal places
+  }
 
-  if (Serial.available() && distance > 20.0) {
+  // 2) Process serial motor commands (Arduino no longer blocks motion)
+  if (Serial.available()) {
     String command = Serial.readStringUntil('\n');
     command.trim();
-    
+
+    lastCmdMs = now;
+
     if (command == "forward") {
       forward();
     } else if (command == "backward") {
@@ -191,7 +206,10 @@ void loop() {
     } else if (command == "quit") {
       quitDrive();
     }
-  } else if (distance < 20.0) {
-    stopMotors(); 
-  } 
+  }
+
+  // 3) if Jetson stops sending commands, stop motors
+  //if ((now - lastCmdMs) > CMD_WATCHDOG_MS) {
+    //stopMotors();
+  //}
 }
