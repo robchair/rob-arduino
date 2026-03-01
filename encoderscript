@@ -1,0 +1,56 @@
+#define CLK 2
+#define DT  3
+
+volatile long encoderCount = 0;
+volatile int lastDirection = 0;  // +1 = CW, -1 = CCW
+volatile int lastCLKState;
+
+void readEncoder() {
+  int currentCLK = digitalRead(CLK);
+
+  if (currentCLK != lastCLKState) {
+    if (digitalRead(DT) != currentCLK) {
+      encoderCount--;
+      lastDirection = -1;  // CCW
+    } else {
+      encoderCount++;
+      lastDirection = +1;  // CW
+    }
+    lastCLKState = currentCLK;
+  }
+}
+
+void setup() {
+  Serial.begin(115200);//baud rate 
+
+  // Use internal pull-ups if you do NOT have external ones -> external pullups via 5V and 10K ohm resistor in use
+  //pinMode(CLK, INPUT_PULLUP);
+  //pinMode(DT, INPUT_PULLUP);
+
+  lastCLKState = digitalRead(CLK);
+
+  attachInterrupt(digitalPinToInterrupt(CLK), readEncoder, CHANGE);
+
+  Serial.println("Encoder test started. Rotate shaft.");
+}
+
+void loop() {
+  static long lastReportedCount = 0;
+
+  noInterrupts();
+  long countCopy = encoderCount;
+  int dirCopy = lastDirection;
+  interrupts();
+
+  if (countCopy != lastReportedCount) {
+    Serial.print("Direction: ");
+    if (dirCopy > 0) Serial.print("CW");
+    else if (dirCopy < 0) Serial.print("CCW");
+    else Serial.print("N/A");
+
+    Serial.print("  |  Count: ");
+    Serial.println(countCopy);
+
+    lastReportedCount = countCopy;
+  }
+}
