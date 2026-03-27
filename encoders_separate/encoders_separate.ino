@@ -84,27 +84,51 @@ void loop() {
     lastPrint = now;
 
     long lCount, rCount;
-    int lDir, rDir;
 
     noInterrupts();
     lCount = leftCount;
     rCount = rightCount;
-    lDir = leftDir;
-    rDir = rightDir;
     interrupts();
 
     Serial.print("ENC,L=");
     Serial.print(lCount);
-    Serial.print(",LD=");
-    if (lDir > 0) Serial.print("CW");
-    else if (lDir < 0) Serial.print("CCW");
-    else Serial.print("NA");
-
     Serial.print(",R=");
     Serial.print(rCount);
-    Serial.print(",RD=");
-    if (rDir > 0) Serial.println("CW");
-    else if (rDir < 0) Serial.println("CCW");
-    else Serial.println("NA");
+    Serial.print(",T=");
+    Serial.println(now);
   }
 }
+
+//void loop() {
+//  static unsigned long lastPrint = 0;
+//  unsigned long now = millis();
+//
+//  // Print at 20 Hz
+//  if (now - lastPrint >= 50) {
+//    lastPrint = now;
+//
+//    long lCount, rCount;
+//    int lDir, rDir;
+//
+//    noInterrupts();
+//    lCount = leftCount;
+//    rCount = rightCount;
+//    lDir = leftDir;
+//    rDir = rightDir;
+//    interrupts();
+//
+//    Serial.print("ENC,L=");
+//    Serial.print(lCount);
+//    Serial.print(",LD=");
+//    if (lDir > 0) Serial.print("CW");
+//    else if (lDir < 0) Serial.print("CCW");
+//    else Serial.print("NA");
+//
+//    Serial.print(",R=");
+//    Serial.print(rCount);
+//    Serial.print(",RD=");
+//    if (rDir > 0) Serial.println("CW");
+//    else if (rDir < 0) Serial.println("CCW");
+//    else Serial.println("NA");
+//  }
+//}
