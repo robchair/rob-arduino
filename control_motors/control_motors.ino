@@ -28,6 +28,19 @@ const int FWD_SPEED = 150;    // nominal forward speed
 const int TURN_SPEED = 130;   // turning speed
 const int BACK_SPEED = 130;   // backward speed
 
+// -------- RAMP SETTINGS --------
+const float ACCEL_PWM_PER_SEC = 125.0;   // reach 50 PWM in ~0.4 s
+const float DECEL_PWM_PER_SEC = 200.0;   // stop from 50 PWM in ~0.25 s
+
+// -------- MOTOR RAMP STATE --------
+float currentLeftPWM = 0.0f;
+float currentRightPWM = 0.0f;
+
+int targetLeftPWM = 0;
+int targetRightPWM = 0;
+
+unsigned long lastRampMs = 0;
+
 // ---- ULTRASONIC SENSOR SETTINGS ----
 const float STOP_DISTANCE_CM = 20.0;  // Stop if obstacle within 20cm
 const unsigned long SENSOR_INTERVAL = 100;  // Read sensor every 100ms
@@ -53,6 +66,52 @@ float readDistance() {
   
   float distance = (duration / 2.0) * 0.0343;
   return distance;
+}
+float moveToward(float current, float target, float maxStep) {
+  if (current < target) {
+    current += maxStep;
+    if (current > target) current = target;
+  } else if (current > target) {
+    current -= maxStep;
+    if (current < target) current = target;
+  }
+  return current;
+}
+
+void requestMotorSpeeds(int leftSpeed, int rightSpeed) {
+  targetLeftPWM = clampSpeed(leftSpeed);
+  targetRightPWM = clampSpeed(rightSpeed);
+}
+
+void applyMotorSpeedsImmediate(int leftSpeed, int rightSpeed) {
+  targetLeftPWM = clampSpeed(leftSpeed);
+  targetRightPWM = clampSpeed(rightSpeed);
+  currentLeftPWM = targetLeftPWM;
+  currentRightPWM = targetRightPWM;
+  setMotorSpeeds((int)round(currentLeftPWM), (int)round(currentRightPWM));
+}
+
+void updateMotorRamp(unsigned long now) {
+  if (lastRampMs == 0) {
+    lastRampMs = now;
+    return;
+  }
+
+  float dt = (now - lastRampMs) / 1000.0f;
+  lastRampMs = now;
+
+  if (dt <= 0.0f) return;
+
+  float leftRate  = (abs(targetLeftPWM)  < abs(currentLeftPWM))  ? DECEL_PWM_PER_SEC : ACCEL_PWM_PER_SEC;
+  float rightRate = (abs(targetRightPWM) < abs(currentRightPWM)) ? DECEL_PWM_PER_SEC : ACCEL_PWM_PER_SEC;
+
+  float leftStep  = leftRate * dt;
+  float rightStep = rightRate * dt;
+
+  currentLeftPWM  = moveToward(currentLeftPWM,  (float)targetLeftPWM,  leftStep);
+  currentRightPWM = moveToward(currentRightPWM, (float)targetRightPWM, rightStep);
+
+  setMotorSpeeds((int)round(currentLeftPWM), (int)round(currentRightPWM));
 }
 
 void waitUntilClear() {
@@ -107,30 +166,27 @@ void setMotorSpeeds(int leftSpeed, int rightSpeed) {
 
 // High-level motion commands
 void stopMotors() {
-  setMotorSpeeds(0, 0);
+  applyMotorSpeedsImmediate(0, 0);   // keep as hard stop for safety
 }
 
 void forward() {
-  setMotorSpeeds(FWD_SPEED, -FWD_SPEED);
+  requestMotorSpeeds(FWD_SPEED, -FWD_SPEED);
 }
 
 void backward() {
-  setMotorSpeeds(-BACK_SPEED, BACK_SPEED);
+  requestMotorSpeeds(-BACK_SPEED, BACK_SPEED);
 }
 
 void turnLeft() {
-  // left motor stopped, right motor forward
-  setMotorSpeeds(0, -TURN_SPEED);
+  requestMotorSpeeds(0, -TURN_SPEED);
 }
 
 void turnRight() {
-  // right motor stopped, left motor forward
-  setMotorSpeeds(TURN_SPEED, 0);
+  requestMotorSpeeds(TURN_SPEED, 0);
 }
 
-// Optional "kill"/disable semantics – here we just stop.
 void quitDrive() {
-  stopMotors();
+  applyMotorSpeedsImmediate(0, 0);
 }
 
 // -------- ARDUINO SETUP/LOOP --------
