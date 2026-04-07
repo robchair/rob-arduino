@@ -31,10 +31,23 @@ const int R_LEN = -1;
 
 // ---- SPEED LIMITS ----
 //tune speed here
-const int MAX_SPEED  = 255;
-const int FWD_SPEED  = 50;//150;
-const int TURN_SPEED = 30;//130;
-const int BACK_SPEED = 40;//130;
+const int MAX_SPEED  = 200; //250
+const int FWD_SPEED  = 50;  //150;
+const int TURN_SPEED = 30;  //130;
+const int BACK_SPEED = 40;  //130;
+
+// -------- RAMP SETTINGS --------
+const float ACCEL_PWM_PER_SEC = 125.0;   // reach 50 PWM in 0.4 s
+const float DECEL_PWM_PER_SEC = 180.0;   // stop from 50 PWM in 0.28 s
+
+// -------- MOTOR RAMP STATE --------
+float currentLeftPWM = 0.0f;
+float currentRightPWM = 0.0f;
+
+int targetLeftPWM = 0;
+int targetRightPWM = 0;
+
+unsigned long lastRampMs = 0;
 
 // ---- ULTRASONIC SETTINGS ----
 const float STOP_DISTANCE_CM = 20.0;
@@ -101,19 +114,51 @@ float readDistance() {
   return distance;
 }
 
-void waitUntilClear() {
-  stopMotors();
-  Serial.println("OBSTACLE_DETECTED");
-
-  while (true) {
-    delay(SENSOR_INTERVAL);
-    float distance = readDistance();
-
-    if (distance >= STOP_DISTANCE_CM) {
-      Serial.println("PATH_CLEAR");
-      break;
-    }
+float moveToward(float current, float target, float maxStep) {
+  if (current < target) {
+    current += maxStep;
+    if (current > target) current = target;
+  } else if (current > target) {
+    current -= maxStep;
+    if (current < target) current = target;
   }
+  return current;
+}
+
+void requestMotorSpeeds(int leftSpeed, int rightSpeed) {
+  targetLeftPWM = clampSpeed(leftSpeed);
+  targetRightPWM = clampSpeed(rightSpeed);
+}
+
+void applyMotorSpeedsImmediate(int leftSpeed, int rightSpeed) {
+  targetLeftPWM = clampSpeed(leftSpeed);
+  targetRightPWM = clampSpeed(rightSpeed);
+  currentLeftPWM = targetLeftPWM;
+  currentRightPWM = targetRightPWM;
+  setMotorSpeeds((int)round(currentLeftPWM), (int)round(currentRightPWM));
+}
+
+void updateMotorRamp(unsigned long now) {
+  if (lastRampMs == 0) {
+    lastRampMs = now;
+    return;
+  }
+
+  float dt = (now - lastRampMs) / 1000.0f;
+  lastRampMs = now;
+
+  if (dt <= 0.0f) return;
+
+  float leftRate  = (abs(targetLeftPWM)  < abs(currentLeftPWM))  ? DECEL_PWM_PER_SEC : ACCEL_PWM_PER_SEC;
+  float rightRate = (abs(targetRightPWM) < abs(currentRightPWM)) ? DECEL_PWM_PER_SEC : ACCEL_PWM_PER_SEC;
+
+  float leftStep  = leftRate * dt;
+  float rightStep = rightRate * dt;
+
+  currentLeftPWM  = moveToward(currentLeftPWM,  (float)targetLeftPWM,  leftStep);
+  currentRightPWM = moveToward(currentRightPWM, (float)targetRightPWM, rightStep);
+
+  setMotorSpeeds((int)round(currentLeftPWM), (int)round(currentRightPWM));
 }
 
 // -------- MOTOR CONTROL HELPERS --------
@@ -144,27 +189,27 @@ void setMotorSpeeds(int leftSpeed, int rightSpeed) {
 }
 
 void stopMotors() {
-  setMotorSpeeds(0, 0);
+  applyMotorSpeedsImmediate(0, 0);   // keep as hard stop for safety
 }
 
 void forward() {
-  setMotorSpeeds(FWD_SPEED, -FWD_SPEED);
+  requestMotorSpeeds(FWD_SPEED, -FWD_SPEED);
 }
 
 void backward() {
-  setMotorSpeeds(-BACK_SPEED, BACK_SPEED);
+  requestMotorSpeeds(-BACK_SPEED, BACK_SPEED);
 }
 
 void turnLeft() {
-  setMotorSpeeds(0, -TURN_SPEED);
+  requestMotorSpeeds(0, -TURN_SPEED);
 }
 
 void turnRight() {
-  setMotorSpeeds(TURN_SPEED, 0);
+  requestMotorSpeeds(TURN_SPEED, 0);
 }
 
 void quitDrive() {
-  stopMotors();
+  applyMotorSpeedsImmediate(0, 0);
 }
 
 // -------- SETUP --------
@@ -214,6 +259,8 @@ void setup() {
 // -------- LOOP --------
 void loop() {
   unsigned long now = millis();
+
+  updateMotorRamp(now);
 
   // 1) Publish ultrasonic telemetry
   if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
