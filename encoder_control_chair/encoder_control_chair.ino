@@ -31,10 +31,10 @@ const int R_LEN = -1;
 
 // ---- SPEED LIMITS ----
 //tune speed here
-const int MAX_SPEED  = 200; //250
-const int FWD_SPEED  = 50;  //150;
+const int MAX_SPEED  = 60; //250
+const int FWD_SPEED  = 40;  //150;
 const int TURN_SPEED = 30;  //130;
-const int BACK_SPEED = 40;  //130;
+const int BACK_SPEED = 30;  //130;
 
 // -------- RAMP SETTINGS --------
 const float ACCEL_PWM_PER_SEC = 125.0;   // reach 50 PWM in 0.4 s
@@ -262,7 +262,7 @@ void loop() {
 
   updateMotorRamp(now);
 
-  // 1) Publish ultrasonic telemetry
+  // 1) Publish ultrasonic telemetry every 100 ms
   if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryMs = now;
     float distance = readDistance();
