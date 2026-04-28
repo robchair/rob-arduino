@@ -58,7 +58,7 @@ const unsigned long SENSOR_INTERVAL = 100;
 // ---- TELEMETRY / SAFETY ----
 const unsigned long TELEMETRY_INTERVAL_MS = 100;  // range telemetry
 const unsigned long ENC_INTERVAL_MS = 25;         // encoder telemetry at 40 Hz
-const unsigned long CMD_WATCHDOG_MS = 250;
+const unsigned long CMD_WATCHDOG_MS = 500;
 
 // ---- ENCODER STATE ----
 volatile long leftCount = 0;
@@ -218,6 +218,36 @@ void quitDrive() {
   applyMotorSpeedsImmediate(0, 0);
 }
 
+void applyMotorSpeedsSafe(int leftSpeed, int rightSpeed) {
+    leftSpeed = clampSpeed(leftSpeed);
+    rightSpeed = clampSpeed(rightSpeed);
+
+    // If direction is reversing, force through zero first
+    // This prevents shoot-through current spikes
+    if ((currentLeftPWM > 5 && leftSpeed < -5) ||
+        (currentLeftPWM < -5 && leftSpeed > 5)) {
+        targetLeftPWM = 0;
+        targetRightPWM = 0;
+        currentLeftPWM = 0;
+        currentRightPWM = 0;
+        setMotorSpeeds(0, 0);
+        delay(20);  // 20ms dead time for back-EMF to dissipate
+    }
+    if ((currentRightPWM > 5 && rightSpeed < -5) ||
+        (currentRightPWM < -5 && rightSpeed > 5)) {
+        targetRightPWM = 0;
+        currentRightPWM = 0;
+        setMotorSpeeds((int)round(currentLeftPWM), 0);
+        delay(20);
+    }
+
+    targetLeftPWM = leftSpeed;
+    targetRightPWM = rightSpeed;
+    currentLeftPWM = leftSpeed;
+    currentRightPWM = rightSpeed;
+    setMotorSpeeds(leftSpeed, rightSpeed);
+}
+
 // -------- SETUP --------
 void setup() {
   Serial.begin(115200);
@@ -266,7 +296,12 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  updateMotorRamp(now);
+  // Only run ramp for legacy string commands (forward/backward/etc.)
+  // PWM commands set current=target, so ramp is a no-op for them,
+  // but let's be explicit and skip the overhead
+  if (currentLeftPWM != targetLeftPWM || currentRightPWM != targetRightPWM) {
+    updateMotorRamp(now);
+  }
 
   // 1) Publish ultrasonic telemetry every 100 ms
   if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
@@ -299,25 +334,47 @@ void loop() {
     String command = Serial.readStringUntil('\n');
     command.trim();
 
-    lastCmdMs = now;
-
-    if (command == "forward") {
+    if (command.length() == 0) {
+      // Empty command — still counts as comms alive
+      lastCmdMs = now;
+    }
+    else if (command.startsWith("PWM,")) {
+      int lIdx = command.indexOf("L=");
+      int rIdx = command.indexOf(",R=");
+      if (lIdx >= 0 && rIdx >= 0) {
+          int leftPWM = command.substring(lIdx + 2, rIdx).toInt();
+          int rightPWM = command.substring(rIdx + 3).toInt();
+          applyMotorSpeedsSafe(leftPWM, rightPWM);
+      }
+      lastCmdMs = now;
+    }
+    else if (command == "forward") {
       forward();
+      lastCmdMs = now;
     } else if (command == "backward") {
       backward();
+      lastCmdMs = now;
     } else if (command == "turnLeft") {
       turnLeft();
+      lastCmdMs = now;
     } else if (command == "turnRight") {
       turnRight();
+      lastCmdMs = now;
     } else if (command == "stop") {
       stopMotors();
+      lastCmdMs = now;
     } else if (command == "quit") {
       quitDrive();
+      lastCmdMs = now;
     }
+    // Unknown commands are silently ignored but DON'T update lastCmdMs
   }
 
-  // 4) Optional watchdog
-  // if ((now - lastCmdMs) > CMD_WATCHDOG_MS) {
-  //   stopMotors();
-  // }
+  // 4) Watchdog — one-shot, only fires once
+  if ((now - lastCmdMs) > CMD_WATCHDOG_MS) {
+    if (targetLeftPWM != 0 || targetRightPWM != 0 ||
+        abs(currentLeftPWM) > 0 || abs(currentRightPWM) > 0) {
+      stopMotors();
+    }
+  }
 }
